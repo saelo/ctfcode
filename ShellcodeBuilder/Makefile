@@ -13,9 +13,9 @@ arm_as = arm-none-eabi-as
 arm_objcopy = arm-none-eabi-objcopy
 
 arm: shellcode_arm.S
-        $(arm_as) -mthumb -o shellcode_arm.o shellcode_arm.S
-        $(arm_objcopy) -O binary shellcode_arm.o shallcode
-        rm shellcode_arm.o
+	$(arm_as) -mthumb -o shellcode_arm.o shellcode_arm.S
+	$(arm_objcopy) -O binary shellcode_arm.o shallcode
+	rm shellcode_arm.o
 
 clean:
 	rm shellcode

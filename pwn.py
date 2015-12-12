@@ -12,6 +12,8 @@
 #
 
 import socket
+import termios
+import tty
 import time
 import sys
 import select
@@ -127,6 +129,9 @@ def ansi(*args):
     code += Term.ESCAPE_END
     return code
 
+class DisconnectException(Exception):
+    pass
+
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #             Network
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -223,18 +228,23 @@ class Channel:
 
         # Step 4: Print :)
         print(buf, end='')
+        sys.stdout.flush()
+
+    def setVerbose(self, verbose):
+        """Set verbosity of this channel."""
+        self._verbose = verbose
 
     def recv(self, n=4096):
         """Return up to n bytes of data from the remote end.
 
         Buffers incoming data internally.
+
+        NOTE: You probably shouldn't be using this method. Use one of the other recvX methods instead.
         """
         if len(self._buf) < n:
             buf = self._s.recv(65536)
             if not buf and not self._buf:
-                print_bad("Server disconnected")
-                # TODO might want to raise an exception instead...
-                sys.exit(1)
+                raise DisconnectException("Server disconnected.")
             if self._verbose:
                 self._prettyprint(buf, False)
             self._buf += buf
@@ -309,23 +319,66 @@ class Channel:
 
     def interact(self):
         """Interact with the remote end: connect stdout and stdin to the socket."""
+        # TODO maybe use this at some point: https://docs.python.org/3/library/selectors.html
         self._verbose = False
         try:
             while True:
-                available, _, _ = select.select([sys.stdin, self._s], [], [], .05)
+                available, _, _ = select.select([sys.stdin, s], [], [])
                 for src in available:
                     if src == sys.stdin:
-                        data = sys.stdin.readline()
-                        self.send(e(data))
+                        data = sys.stdin.buffer.read1(1024)        # Only one read() call, otherwise this breaks when the tty is in raw mode
+                        self.send(data)
                     else:
-                        data = self.recv()
-                        try:
-                            data = d(data)
-                        except UnicodeDecodeError:
-                            pass
-                        print(data, end='')
+                        data = recv(4096)
+                        sys.stdout.buffer.write(data)
+                        sys.stdout.flush()
         except KeyboardInterrupt:
             return
+        except DisconnectException:
+            print_info("Server disconnected.")
+            return
+
+#
+# Telnet emulation
+#
+def telnet(shell='/bin/bash'):
+    """Telnet emulation.
+
+    Opens a PTY on the remote end and connects the master side to the socket.
+    Then spawns a shell connected to the slave end and puts the controlling TTY
+    on the local machine into raw mode.
+    Result: Something similar to a telnet/(plaintext)ssh session.
+
+    Vim, htop, su, less, etc. will work with this.
+
+    !!! This function only works if the channel is connected to a shell !!!
+    """
+    assert(sys.stdin.isatty())
+    c.setVerbose(False)
+
+    # Open a PTY and spawn a bash connected to the slave end on the remote side
+    code = 'import pty; pty.spawn([\'{}\', \'-i\'])'.format(shell)
+    sendline('python -c "{}"; exit'.format(code))
+    time.sleep(0.1)           # No really good way of knowing when the shell has opened on the other side...
+                              # Should maybe put some more functionality into the inline python code instead.
+
+    # Save current TTY settings
+    old_settings = termios.tcgetattr(sys.stdin.fileno())
+
+    # Put TTY into raw mode
+    tty.setraw(sys.stdin)
+
+    # Resize remote terminal
+    # Nice-to-have: also handle terminal resize
+    cols, rows = os.get_terminal_size(sys.stdin.fileno())
+    sendline('stty rows {} cols {}; echo READY'.format(rows, cols))
+    recvtil('READY\r\n')            # terminal echo
+    recvtil('READY\r\n')            # command output
+
+    interact()
+
+    # Restore previous settings
+    termios.tcsetattr(sys.stdin.fileno(), termios.TCSADRAIN, old_settings)
 
 #
 # Convenience wrappers that use the global socket instance
@@ -356,8 +409,6 @@ def recvregex(r):
 
 def interact():
     c.interact()
-
-# TODO add missing
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #          Global Setup
