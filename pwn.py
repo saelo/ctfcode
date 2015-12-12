@@ -74,35 +74,37 @@ def print_info(msg):
 #              Misc.
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 def bytes_and_strings_are_cool(func):
-    """Decorator to encode arguments that are string instance."""
+    """Decorator to encode arguments that are string instances."""
     def inner(*args, **kwargs):
         nargs = tuple(map(lambda arg: e(arg) if isinstance(arg, str) else arg, args))
         nkwargs = dict(map(lambda k, v: (k, e(v)) if isinstance(v, str) else (k, v), kwargs))
         return func(*nargs, **nkwargs)
     return inner
 
-def num(n):
-    """Return n as a byte string, i.e. 5 => b'5'."""
-    return e(str(n))
-
 def validate(data, badchars):
     """Assert that no badchar occurs in data."""
     assert(all(b not in data for b in badchars))
 
-def is_ascii(b):
+def is_printable(b):
     """Return true if the given byte is a printable ASCII character."""
-    return b in b'\n\r\t 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz`~!@#$%^&*()-_=+[]{}\\|\'";:/?.,<>'
+    return b in e(string.printable)
 
 def hexdump(data):
     """Return a hexdump of the given data. Similar to what `hexdump -C` produces."""
-    res = ''
+
+    def is_hexdump_printable(b):
+        return b in b' 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz`~!@#$%^&*()-_=+[]{}\\|\'";:/?.,<>'
+
+    lines = []
     chunks = (data[i*16:i*16+16] for i in range((len(data) + 15) // 16))
+
     for i, chunk in enumerate(chunks):
         hexblock = ['{:02x}'.format(b) for b in chunk]
         left, right = ' '.join(hexblock[:8]), ' '.join(hexblock[8:])
-        asciiblock = ''.join(chr(b) if is_ascii(b) else '.' for b in chunk)
-        res += '{:08x}  {:23}  {:23}  |{}|\n'.format(i*16, left, right, asciiblock)
-    return res
+        asciiblock = ''.join(chr(b) if is_hexdump_printable(b) else '.' for b in chunk)
+        lines.append('{:08x}  {:23}  {:23}  |{}|'.format(i*16, left, right, asciiblock))
+
+    return '\n'.join(lines)
 
 class Term:
     COLOR_BLACK = '30'
@@ -168,7 +170,7 @@ class Channel:
         parts = []
         curr = ''
         for b in data:
-            if is_ascii(b):
+            if is_printable(b):
                 parts.append((TEXT, b))
             else:
                 parts.append((BINARY, b))
@@ -310,7 +312,7 @@ class Channel:
 
     def sendnum(self, n):
         """Send the string representation of n followed by a newline character."""
-        sendline(num(n))
+        sendline(n)
 
     @bytes_and_strings_are_cool
     def sendline(self, l):
