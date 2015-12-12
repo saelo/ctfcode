@@ -20,6 +20,7 @@ import select
 import os
 import re
 import telnetlib
+import string
 from struct import pack, unpack
 from binascii import hexlify, unhexlify
 
@@ -133,6 +134,75 @@ def ansi(*args):
 
 class DisconnectException(Exception):
     pass
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#        Pattern Generation
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+class Pattern:
+    """De-Bruijn sequence generator."""
+    alphabet = string.digits + string.ascii_letters
+
+    def __init__(self, length):
+        if length <= len(self.alphabet):
+            self._seq = self.alphabet[:length]
+        elif length <= len(self.alphabet) ** 2:
+            self._seq = self._generate(2)[:length]
+        elif length <= len(self.alphabet) ** 3:
+            self._seq = self._generate(3)[:length]
+        elif length <= len(self.alphabet) ** 4:
+            self._seq = self._generate(4)[:length]
+        else:
+            raise Exception("Pattern length is way to large")
+
+    def _generate(self, n):
+        """Generate a De Bruijn sequence."""
+        # See https://en.wikipedia.org/wiki/De_Bruijn_sequence
+
+        k = len(self.alphabet)
+        a = [0] * k * n
+        sequence = []
+
+        def db(t, p):
+            if t > n:
+                if n % p == 0:
+                    sequence.extend(a[1:p + 1])
+            else:
+                a[t] = a[t - p]
+                db(t + 1, p)
+                for j in range(a[t - p] + 1, k):
+                    a[t] = j
+                    db(t + 1, t)
+        db(1, 1)
+        return ''.join(self.alphabet[i] for i in sequence)
+
+    def bytes(self):
+        """Return this sequence as bytes."""
+        return e(self._seq)
+
+    def __str__(self):
+        """Return this sequence as string."""
+        return self._seq
+
+    @bytes_and_strings_are_cool
+    def offset(self, needle):
+        """Returns the index of 'needle' in this sequence.
+
+        'needle' should be of type string or bytes. If an integer is provided
+        it will be treated as 32-bit or 64-bit little endian number, depending
+        on its bit length.
+        """
+        if isinstance(needle, int):
+            if needle.bit_length() <= 32:
+                needle = p32(needle)
+            else:
+                needle = p64(needle)
+        needle = d(needle)
+
+        idx = self._seq.index(needle)
+        if self._seq[idx+len(needle):].find(needle) != -1:
+            raise ValueError("Multiple occurances found!")
+
+        return idx
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #             Network
@@ -284,7 +354,7 @@ class Channel:
         IMPORTANT: Since the data is coming from the network, it's usually
         a bad idea to use a regex such as 'addr: 0x([0-9a-f]+)' as this function
         will return as soon as 'addr: 0xf' is read. Instead, make sure to
-        end the regex with a known sequence.
+        end the regex with a known sequence, e.g. use 'addr: 0x([0-9a-f]+)\\n'.
         """
         if isinstance(regex, str):
             regex = re.compile(regex)
