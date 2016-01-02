@@ -1,0 +1,3 @@
+
+socat tcp-listen:4444,fork,reuseaddr exec:./pwnable,PTY,raw,echo=0
+socat tcp-listen:4444,reuseaddr exec:./pwnable,PTY,raw,echo=0

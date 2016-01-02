@@ -343,7 +343,7 @@ class Channel:
         buf = b''
         # TODO maybe not make this O(n**2)...
         while not delim in buf:
-            buf += recv(1)
+            buf += self.recv(1)
         return buf
 
     def recvregex(self, regex):
@@ -372,7 +372,7 @@ class Channel:
 
         The trailing newline character will be included in the returned buffer.
         """
-        return recvtil('\n')
+        return self.recvtil('\n')
 
     def send(self, buf):
         """Send all data in buf to the remote end."""
@@ -382,7 +382,7 @@ class Channel:
 
     def sendnum(self, n):
         """Send the string representation of n followed by a newline character."""
-        sendline(n)
+        self.sendline(str(n))
 
     @bytes_and_strings_are_cool
     def sendline(self, l):
@@ -395,13 +395,13 @@ class Channel:
         self._verbose = False
         try:
             while True:
-                available, _, _ = select.select([sys.stdin, s], [], [])
+                available, _, _ = select.select([sys.stdin, self._s], [], [])
                 for src in available:
                     if src == sys.stdin:
                         data = sys.stdin.buffer.read1(1024)        # Only one read() call, otherwise this breaks when the tty is in raw mode
                         self.send(data)
                     else:
-                        data = recv(4096)
+                        data = self.recv(4096)
                         sys.stdout.buffer.write(data)
                         sys.stdout.flush()
         except KeyboardInterrupt:
