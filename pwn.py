@@ -431,7 +431,7 @@ def telnet(shell='/bin/bash'):
     # Open a PTY and spawn a bash connected to the slave end on the remote side
     code = 'import pty; pty.spawn([\'{}\', \'-i\'])'.format(shell)
     sendline('python -c "{}"; exit'.format(code))
-    time.sleep(0.1)           # No really good way of knowing when the shell has opened on the other side...
+    time.sleep(0.5)           # No really good way of knowing when the shell has opened on the other side...
                               # Should maybe put some more functionality into the inline python code instead.
 
     # Save current TTY settings
